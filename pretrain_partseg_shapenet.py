@@ -38,25 +38,7 @@ DEBUG = False
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
-classes = ['Airplane', 'Bag', 'Cap', 'Car', 'Chair', 'Earphone', 'Guitar', 'Knife', 'Lamp', 'Laptop', 'Motorbike', 'Mug', 'Pistol', 'Rocket', 'Skateboard', 'Table']
-seg_classes = {'Earphone': [16, 17, 18], 'Motorbike': [30, 31, 32, 33, 34, 35], 
-                'Rocket': [41, 42, 43], 'Car': [8, 9, 10, 11], 'Laptop': [28, 29], 
-                'Cap': [6, 7], 'Skateboard': [44, 45, 46], 'Mug': [36, 37], 
-                'Guitar': [19, 20, 21], 'Bag': [4, 5], 'Lamp': [24, 25, 26, 27], 
-                'Table': [47, 48, 49], 'Airplane': [0, 1, 2, 3], 'Pistol': [38, 39, 40], 
-                'Chair': [12, 13, 14, 15], 'Knife': [22, 23]}
-seg_label_to_cat = {} # {0:Airplane, 1:Airplane, ...49:Table}
-for cat in seg_classes.keys():
-    for label in seg_classes[cat]:
-        seg_label_to_cat[label] = cat
 
-
-def to_categorical(y, num_classes):
-    """ 1-hot encodes a tensor """
-    new_y = torch.eye(num_classes)[y.cpu().data.numpy(),]
-    if (y.is_cuda):
-        return new_y.cuda()
-    return new_y
 
 
 def main(args):
@@ -85,8 +67,6 @@ def main(args):
                 % ( args.k_shot, args.seed, args.learning_rate, 
                     args.step_size, args.lr_decay, args.decay_rate, 
                     int(args.l2_norm) )
-    if args.normal:
-        dir_name = dir_name + '_normals'
     if args.selfsup:
         dir_name = dir_name + 'selfsup-%s_selfsup_margin-%.2f_lambda-%.2f' \
                     % (args.ss_dataset, args.margin, args.lmbda)
@@ -147,43 +127,42 @@ def main(args):
     num_classes = 16
     num_part = 50
 
-    if args.selfsup:
-        log_string('Use self-supervision - alternate batches')
-        if not args.retain_overlaps:
-            log_string('\tRemove overlaps between labeled and self-sup datasets')
-            labeled_fns = list(itertools.chain(*TEST_DATASET.meta.values())) \
-                            + list(itertools.chain(*TRAIN_DATASET.meta.values()))
-        else:
-            log_string('\tUse all files in self-sup dataset')
-            labeled_fns = []
+    log_string('Use self-supervision - alternate batches')
+    if not args.retain_overlaps:
+        log_string('\tRemove overlaps between labeled and self-sup datasets')
+        labeled_fns = list(itertools.chain(*TEST_DATASET.meta.values())) \
+                        + list(itertools.chain(*TRAIN_DATASET.meta.values()))
+    else:
+        log_string('\tUse all files in self-sup dataset')
+        labeled_fns = []
 
-        if args.ss_dataset == 'dummy':
-            log_string('Using "dummy" self-supervision dataset (rest of labeled ShapeNetSeg)')
-            SELFSUP_DATASET = SelfSupPartNormalDataset(root = root, npoints=args.npoint, 
-                                        split='trainval', normal_channel=args.normal, 
-                                        k_shot=args.n_cls_selfsup, labeled_fns=labeled_fns)
-        elif args.ss_dataset == 'acd':
-            log_string('Using "ACD" self-supervision dataset (ShapeNet Seg)')
-            ACD_ROOT = args.ss_path
-            SELFSUP_DATASET = ACDSelfSupDataset(root = ACD_ROOT, npoints=args.npoint, 
-                                                normal_channel=args.normal, 
-                                                k_shot=args.n_cls_selfsup, 
-                                                exclude_fns=labeled_fns, 
-                                                use_val = True)
-            log_string('\t %d samples' % len(SELFSUP_DATASET))
-            selfsup_train_fns = list(itertools.chain(*SELFSUP_DATASET.meta.values()))            
-            log_string('Val dataset for self-sup')
-            SELFSUP_VAL = ACDSelfSupDataset(root = ACD_ROOT, npoints=args.npoint, 
-                                        normal_channel=args.normal, 
-                                        k_shot=args.n_cls_selfsup, use_val=False,
-                                        exclude_fns=selfsup_train_fns + labeled_fns)
-            log_string('\t %d samples' % len(SELFSUP_VAL))
+    if args.ss_dataset == 'dummy':
+        log_string('Using "dummy" self-supervision dataset (rest of labeled ShapeNetSeg)')
+        SELFSUP_DATASET = SelfSupPartNormalDataset(root = root, npoints=args.npoint, 
+                                    split='trainval', normal_channel=args.normal, 
+                                    k_shot=args.n_cls_selfsup, labeled_fns=labeled_fns)
+    elif args.ss_dataset == 'acd':
+        log_string('Using "ACD" self-supervision dataset (ShapeNet Seg)')
+        ACD_ROOT = args.ss_path
+        SELFSUP_DATASET = ACDSelfSupDataset(root = ACD_ROOT, npoints=args.npoint, 
+                                            normal_channel=args.normal, 
+                                            k_shot=args.n_cls_selfsup, 
+                                            exclude_fns=labeled_fns, 
+                                            use_val = True)
+        log_string('\t %d samples' % len(SELFSUP_DATASET))
+        selfsup_train_fns = list(itertools.chain(*SELFSUP_DATASET.meta.values()))            
+        log_string('Val dataset for self-sup')
+        SELFSUP_VAL = ACDSelfSupDataset(root = ACD_ROOT, npoints=args.npoint, 
+                                    normal_channel=args.normal, 
+                                    k_shot=args.n_cls_selfsup, use_val=False,
+                                    exclude_fns=selfsup_train_fns + labeled_fns)
+        log_string('\t %d samples' % len(SELFSUP_VAL))
 
-        selfsupDataLoader = torch.utils.data.DataLoader(SELFSUP_DATASET, batch_size=args.batch_size, 
-                                                        shuffle=True, num_workers=4)        
-        selfsupIterator = iter(selfsupDataLoader)
-        selfsupValLoader = torch.utils.data.DataLoader(SELFSUP_VAL, batch_size=args.batch_size, 
-                                                        shuffle=False, num_workers=4)
+    selfsupDataLoader = torch.utils.data.DataLoader(SELFSUP_DATASET, batch_size=args.batch_size, 
+                                                    shuffle=True, num_workers=4)        
+    selfsupIterator = iter(selfsupDataLoader)
+    selfsupValLoader = torch.utils.data.DataLoader(SELFSUP_VAL, batch_size=args.batch_size, 
+                                                    shuffle=False, num_workers=4)
 
     log_string('Load ModelNet dataset for validation')
     DATA_PATH = 'ShapeSelfSup/dataset/modelnet40_normal_resampled/'
@@ -201,16 +180,13 @@ def main(args):
     shutil.copy('ShapeSelfSup/models/pointnet_util.py', str(experiment_dir))
 
     if args.model == 'dgcnn':
-        classifier = MODEL.get_model(num_part, normal_channel=args.normal, k=args.dgcnn_k).cuda()
+        classifier = MODEL.get_model(num_part, k=args.dgcnn_k).cuda()
     else:
-        classifier = MODEL.get_model(num_part, normal_channel=args.normal).cuda()
+        classifier = MODEL.get_model(num_part).cuda()
     
 
-    criterion = MODEL.get_loss().cuda()
-
-    if args.selfsup:
-        selfsupCriterion = MODEL.get_selfsup_loss(margin=args.margin).cuda()
-        log_string("The number of self-sup data is: %d" %  len(SELFSUP_DATASET))
+    selfsupCriterion = MODEL.get_selfsup_loss(margin=args.margin).cuda()
+    log_string("The number of self-sup data is: %d" %  len(SELFSUP_DATASET))
 
 
     def weights_init(m):
@@ -260,10 +236,8 @@ def main(args):
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         classifier = nn.DataParallel(classifier)
-    if args.if_cuboid:
-        print('Using Cuboid as Primitive..................')
-    else:
-        print('Using Ellipsoid as Primitive...............')
+
+    print('Using Ellipsoid as Primitive...............')
 
     if args.include_convex_loss:
         print('Using Convex Fitting/Convex Loss with lambda - {}.........................'.format(args.lmbda))
@@ -312,8 +286,7 @@ def main(args):
                 break
 
             points, chamfer_points, label, target = data_ss          # (points: bs x 3 x n_pts, label: bs x 1, target: bs x n_pts)
-            class_list = [classes[label[idx, :].data] for idx in range(label.size()[0])]
-            #print('class List: ', class_list)
+
             points = points.data.numpy()
             chamfer_points = chamfer_points.data.numpy()
             points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3])
@@ -337,22 +310,20 @@ def main(args):
                 chamfer_points[:,:, 0:3] = provider.rotate_point_cloud_y_pi4(chamfer_points[:,:, 0:3])
 
             points, chamfer_points = torch.Tensor(points), torch.Tensor(chamfer_points)
-            points, chamfer_points, label, target = points.float().cuda(), chamfer_points.float().cuda(), label.long().cuda(), target.long().cuda()
+            points, chamfer_points = points.float().cuda(), chamfer_points.float().cuda()
             points = points.transpose(2, 1)
             chamfer_points = chamfer_points.transpose(2, 1)
             # np.save(osp.join(experiment_dir, 'pts_z-rot.npy'), points.cpu().numpy())
             # np.save(osp.join(experiment_dir, 'target.npy'), target.cpu().numpy())
 
             # for self-sup category label is always unknown, so always zeros:
-            category_label = torch.zeros([label.shape[0], 1, num_classes]).cuda()
 
             optimizer.zero_grad()
             classifier = classifier.train()
             points = chamfer_points[:, :, np.random.choice(5000, 2048, replace=False)]
             #print (points.shape)
 
-            #_, _, feat = classifier(points, category_label)# feat: [bs x ndim x npts]
-            _, _, feat, loss_self_sup, chamfer_loss = classifier(points, category_label, if_cuboid=args.if_cuboid, chamfer_points=chamfer_points, include_convex_loss=args.include_convex_loss, include_intersect_loss=args.include_intersect_loss, include_entropy_loss=args.include_entropy_loss, include_pruning=args.include_pruning, quantile=args.quantile,     msc_iterations=args.msc_iterations, max_num_clusters=args.max_num_clusters, alpha=args.alpha, beta=args.beta, batch_id=i, epoch=epoch, evaluation=False)
+            feat, loss_self_sup, chamfer_loss = classifier(points, chamfer_points=chamfer_points, include_convex_loss=args.include_convex_loss, include_intersect_loss=args.include_intersect_loss, include_entropy_loss=args.include_entropy_loss, include_pruning=args.include_pruning, quantile=args.quantile,     msc_iterations=args.msc_iterations, max_num_clusters=args.max_num_clusters, alpha=args.alpha, beta=args.beta, batch_id=i, epoch=epoch, evaluation=False)
             ss_loss = torch.mean(loss_self_sup) * args.lmbda
 
             #ss_loss = selfsupCriterion(feat, target) * args.lmbda
@@ -386,43 +357,18 @@ def main(args):
 
                 #if (batch_id + 1) % 4 == 0: break
                 cur_batch_size, NUM_POINT, _ = chamfer_points.size()
-                points, chamfer_points, label, target = points.float().cuda(), chamfer_points.float().cuda(), label.long().cuda(), target.long().cuda()
+                points, chamfer_points = points.float().cuda(), chamfer_points.float().cuda()
                 points = points.transpose(2, 1)
                 chamfer_points = chamfer_points.transpose(2, 1)
-                category_label = torch.zeros([label.shape[0], 1, num_classes]).cuda()
                 classifier = classifier.eval()
 
                 points = chamfer_points[:, :, np.random.choice(5000, 2048, replace=False)]
 
-                _, _, feat, loss_self_sup, chamfer_loss = classifier(points, category_label, if_cuboid=args.if_cuboid, chamfer_points=chamfer_points, include_convex_loss=args.include_convex_loss, include_intersect_loss=args.include_intersect_loss, include_entropy_loss=args.include_entropy_loss, include_pruning=args.include_pruning, quantile=args.quantile, msc_iterations=args.msc_iterations, max_num_clusters=args.max_num_clusters, alpha=args.alpha, beta=args.beta, batch_id=i, epoch=epoch, evaluation=False)
-                #_, _, feat = classifier(points, category_label)
+                feat, loss_self_sup, chamfer_loss = classifier(points, chamfer_points=chamfer_points, include_convex_loss=args.include_convex_loss, include_intersect_loss=args.include_intersect_loss, include_entropy_loss=args.include_entropy_loss, include_pruning=args.include_pruning, quantile=args.quantile, msc_iterations=args.msc_iterations, max_num_clusters=args.max_num_clusters, alpha=args.alpha, beta=args.beta, batch_id=i, epoch=epoch, evaluation=False)
                 val_loss = torch.mean(loss_self_sup)
                 total_val_loss += val_loss.data.cpu().item()
             avg_val_loss = total_val_loss / len(selfsupValLoader)
         log_value('selfsup_loss_val', avg_val_loss, epoch)
-
-
-        '''(optional) validation on ModelNet40'''
-        if args.modelnet_val:
-            log_string('Validation: SVM on ModelNet40')
-            with torch.no_grad():
-                log_string('Extract features on ModelNet40')
-                if args.model == 'pointnet_part_seg':
-                    feat_train, label_train = extract_feats_pointnet(
-                                                classifier, modelnetLoader, subset=0.5) 
-                elif args.model == 'pointnet2_part_seg_msg':
-                    feat_train, label_train = extract_feats(
-                                                classifier, modelnetLoader, subset=0.5) 
-                else:
-                    raise ValueError
-                log_string('Training data: %d samples, %d features' % feat_train.shape) 
-                start_time = time.time()
-                log_string('Training SVM on ModelNet40')
-                svm, best_C, best_score = cross_val_svm(feat_train, label_train, c_min=100, 
-                                                        c_max=501, c_step=20, verbose=False)
-                elapsed_time = time.time() - start_time
-            log_string('ModelNet val Accuracy: %f (elapsed: %f seconds)' % (best_score, elapsed_time))
-            log_value('modelnet_val', best_score, epoch)
 
         # save every epoch
         if epoch % 5 == 0:

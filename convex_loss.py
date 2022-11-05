@@ -24,7 +24,7 @@ import sys, os
 
 loss_cd = Loss()
 
-def convex_loss(points, chamfer_points, X, batch_id=0, epoch=-1, seed=0, N=500, quantile=0.01, iterations=5, visualize=False, max_num_clusters=25, class_list=[], include_intersect_loss=False, alpha=1, beta=1, if_cuboid=False, include_pruning=False, include_entropy_loss=False, evaluation=False):
+def convex_loss(points, chamfer_points, X, batch_id=0, epoch=-1, seed=0, N=500, quantile=0.01, iterations=5, visualize=False, max_num_clusters=25, class_list=[], include_intersect_loss=False, alpha=1, beta=1, include_pruning=False, include_entropy_loss=False, evaluation=False):
     """
     Computes convex approximation loss.
     :param X: per point embedding, size: B x N x 128
@@ -69,11 +69,7 @@ def convex_loss(points, chamfer_points, X, batch_id=0, epoch=-1, seed=0, N=500, 
    
     ellipse_params_batch = weighted_ellipsoid_fitting_batch(points, weights_batch)
 
-    if not if_cuboid:
-        resampled_points_batch = sample_from_pred_params(ellipse_params_batch, N, batch_id=batch_id, seed=seed, visualize=visualize, class_list=class_list, quantile=quantile)
-    else:
-        print("cuboid")
-        resampled_points_batch = sample_from_pred_params_cuboid(ellipse_params_batch, N, batch_id=batch_id, seed=seed, visualize=visualize, class_list=class_list)
+    resampled_points_batch = sample_from_pred_params(ellipse_params_batch, N, batch_id=batch_id, seed=seed, visualize=visualize, class_list=class_list, quantile=quantile)
 
     if include_pruning:
         #print('pruning')
@@ -159,51 +155,6 @@ def compute_intersection_loss(ellipsoid_params_batch, sampled_points_batch):
         losses = torch.zeros(1, requires_grad=True).cuda()
     return losses
 
-
-def compute_intersection_loss_cuboid(ellipsoid_params_batch, sampled_points_batch):
-    """
-    Computes intersection of cuboids, follows same strategy as ellipsoid.
-    :param sampled_points_batch: sampled points on ellipsoids surface.
-    :param ellipsoid_params_batch: parameters of ellipsoids.
-    """
-    batch_size = len(ellipsoid_params_batch)
-
-    losses = []
-    for b in range(batch_size):
-        sdfs = []
-        points = sampled_points_batch[b]
-        for ellipse_param in ellipsoid_params_batch[b]:
-            r, V, center = ellipse_param
-
-            shifted_points = (V.T @ (points - center).T).T
-
-            q = torch.abs(shifted_points) - r
-
-            # not exactly correct but will work on the kind of points we have.
-            sdf = torch.max(q, 1)[0]
-            sdfs.append(sdf)
-
-        sdfs = torch.stack(sdfs, 1)
-        # to compute sdf w.r.t the entire shape, compute min over all ellipsoids.
-        sdfs = torch.min(sdfs, 1)[0]
-
-        # sdfs are thresholded because for some reason the above sdf formula
-        # is always giving negative sdfs. Anyway this is a truncated sdf.
-        # pcd1 = visualize_point_cloud(points[sdfs > -1e-3].data.cpu().numpy(), viz=False)
-        # pcd2 = visualize_point_cloud(points[sdfs < -1e-3].data.cpu().numpy(), viz=False)
-        #
-        # pcd1.paint_uniform_color([0, 1, 0])
-        # pcd2.paint_uniform_color([0, 0, 1])
-        # visualization.draw_geometries([pcd1, pcd2])
-
-        # sort of like a margin.
-        sdfs = torch.clamp_max(sdfs, -1e-3)
-
-        losses.append(torch.mean(sdfs))
-    losses = torch.stack(losses) ** 2
-    losses = losses.mean()
-    # value.
-    return losses
 
 
 def entropy(X):
@@ -470,33 +421,3 @@ def prune_points(points, ellipsoid_param_batch, thres=-1e-3):
     return pruned_points
 
 
-def compute_sdf_cuboid(points, center, r, V):
-    """
-    SDF of cuboids.
-    @param points: points at which sdf needs to be calculated
-    @param center: center of ellipsoid
-    @param r: principal axis lengths
-    @param V: principal axis
-    @return: sdf at points
-    """
-    shifted_points = (V.T @ (points - center).T).T
-
-    # note that the cuboid has the side of 2 * r
-    q = torch.abs(shifted_points) - r
-    sdf = torch.norm(torch.relu(q), p=2, dim=1) + torch.clamp_max(torch.max(q, 1)[0], 0.0)
-    return sdf
-
-
-def compute_sdf_cuboids(points, ellipsoids_parameters):
-    sdf = []
-    for i, params in enumerate(ellipsoids_parameters):
-        r, V, center = params
-        sdf.append(compute_sdf_cuboid(points, center, r, V))
-    return sdf
-
-
-def compute_sdf_cuboid_batch(points, ellipsoids_parameters_batch):
-    sdfs = []
-    for b, ellipsoids_parameters in enumerate(ellipsoids_parameters_batch):
-        sdfs.append(compute_sdf_cuboids(points[b], ellipsoids_parameters))
-    return sdfs

@@ -13,7 +13,6 @@ def parse_args():
     parser.add_argument('--optimizer', type=str, default='Adam', help='Adam or SGD [default: Adam]')
     parser.add_argument('--decay_rate', type=float, default=1e-4, help='weight decay [default: 1e-4]')
     parser.add_argument('--npoint', type=int,  default=2048, help='Point Number [default: 2048]')
-    parser.add_argument('--category', action='store_true', default=False, help='use category label information [default: False]')
     parser.add_argument('--l2_norm', action='store_true', default=False, help='unit-normalize features [default: False]')
     parser.add_argument('--step_size', type=int,  default=20, help='Decay step for lr decay [default: every 20 epochs]')
     parser.add_argument('--rotation_z', action='store_true', default=False, help='use z-rotation jitter [default: False]')
@@ -40,7 +39,6 @@ def parse_args():
     # few-shot setting
     parser.add_argument('--k_shot', type=int,  default=-1, help='few shot samples [default: -1, all samples]')
     parser.add_argument('--pretrained_model', type=str, default=None, help='pre-trained model path [default: None]')
-    parser.add_argument('--init_cls', action='store_true', default=False, help='pre-train classifier layers [default: False]')
     parser.add_argument('--train_split', type=str, default='trainval', help='data split for training [default: trainval]')
     parser.add_argument('--eval_split', type=str, default='test', help='data split for evaluation [default: test]')
     parser.add_argument('--quantile', type=float, default='0.01', help='quantile in mean shift clustering [default: 0.01]')
@@ -52,8 +50,6 @@ def parse_args():
     parser.add_argument('--include_pruning', action='store_true', default=False, help='Pruning [default: False]')
     parser.add_argument('--alpha', type=float, default=1, help='Adjusts the Ellipsoid Intersection Loss [default: 1]')
     parser.add_argument('--beta', type=float, default=0.01, help='Adjusts the SelfSup Entropy Loss [default: 0.01]')
-    parser.add_argument('--if_cuboid', action='store_true', default=False, help='Enable Cuboid Fitting [default: False')
-    parser.add_argument('--reconstruct', action='store_true', default=False, help='Enable reconstruction loss [default: False')
     parser.add_argument('--extra_layers', action='store_true', default=False, help='Enable extra_layers [default: False')
     parser.add_argument('--num_charts', type=int, default=25, help='Number of charts for AtlasNet [default: 25')
     parser.add_argument('--num_points', type=int, default=128, help='Number of points for AtlasNet [default: 128')
@@ -64,8 +60,6 @@ def parse_args():
                             help='Point Number [default: 1024]')
     parser.add_argument('--log_dir', type=str, default='pointnet2_part_seg_msg', 
                             help='Experiment root')
-    parser.add_argument('--normal', action='store_true', default=False, 
-                            help='Whether to use normal information [default: False]')
     parser.add_argument('--sqrt', action='store_true', default=False, 
                             help='Whether to use sqrt normalization [default: False]')
     parser.add_argument('--num_votes', type=int, default=3, 
